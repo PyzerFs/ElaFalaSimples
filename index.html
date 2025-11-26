@@ -5,8 +5,8 @@
     <meta charset="UTF-8" />
     <title>Assistente de Voz IA</title>
 
-    <!-- Gemini API -->
-    <script src="https://cdn.jsdelivr.net/npm/@google/generative-ai/dist/browser.umd.min.js"></script>
+    <!-- GEMINI JS (OBRIGATÓRIO!) -->
+    <script src="https://generativeai.googleapis.com/v1beta/openai.js"></script>
 
     <style>
         body {
@@ -97,89 +97,79 @@
 
         <div class="panel">
             <div class="avatar"></div>
-            <div id="resposta">Ativando microfone…</div>
+
+            <div id="resposta">Toque na tela para permitir o microfone…</div>
+
             <div id="imagens"></div>
         </div>
     </div>
 
+
     <script>
         /* =====================================================
-                         CONFIGURAÇÃO GEMINI
+                        CONFIG GEMINI
         ===================================================== */
         const API_KEY = "AIzaSyALRzrry7cWVfWmDQwlWytK7QA1lqLzF4A";
-
         const genAI = new GoogleGenerativeAI(API_KEY);
 
         const textModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         const mediaModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
         /* =====================================================
-                         MICROFONE — SISTEMA FINAL
+                        MICROFONE
         ===================================================== */
         let recognition = null;
-        let micAtivo = false;
+        let micLigado = false;
 
-        async function solicitarPermissaoMic() {
+        async function pedirPermissao() {
             try {
                 await navigator.mediaDevices.getUserMedia({ audio: true });
                 return true;
-            } catch (e) {
-                alert("Você precisa permitir o microfone para eu funcionar.");
+            } catch {
+                alert("Permita o microfone para continuar");
                 return false;
             }
         }
 
-        async function iniciarReconhecimento() {
-            if (micAtivo) return;
-
-            micAtivo = true;
+        async function iniciarMic() {
+            if (micLigado) return;
+            micLigado = true;
 
             recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
             recognition.lang = "pt-BR";
-            recognition.continuous = false;
-            recognition.interimResults = false;
 
             recognition.onstart = () => {
                 document.getElementById("resposta").innerHTML = "Estou ouvindo…";
             };
 
-            recognition.onresult = (event) => {
-                const texto = event.results[0][0].transcript;
+            recognition.onresult = (e) => {
+                const texto = e.results[0][0].transcript;
                 document.getElementById("resposta").innerHTML = "Você disse: " + texto;
-                responderGemini(texto);
-            };
-
-            recognition.onerror = (e) => {
-                console.warn("Erro no reconhecimento:", e);
+                responder(texto);
             };
 
             recognition.onend = () => {
-                setTimeout(() => {
-                    if (micAtivo) recognition.start();
-                }, 300);
+                if (micLigado) recognition.start();
             };
 
             recognition.start();
         }
 
-        /* =====================================================
-               ATIVAR MICROFONE COM QUALQUER CLIQUE NA TELA
-        ===================================================== */
         window.addEventListener("click", async () => {
-            if (!micAtivo) {
-                const ok = await solicitarPermissaoMic();
-                if (ok) iniciarReconhecimento();
+            if (!micLigado) {
+                const ok = await pedirPermissao();
+                if (ok) iniciarMic();
             }
         });
 
         /* =====================================================
-                         GEMINI: RESPONDER (TEXTO)
+                    GEMINI – RESPOSTA
         ===================================================== */
-        async function responderGemini(texto) {
+        async function responder(texto) {
             document.getElementById("resposta").innerHTML = "Processando...";
 
-            const result = await textModel.generateContent(texto);
-            const resposta = result.response.text();
+            const res = await textModel.generateContent(texto);
+            const resposta = res.response.text();
 
             document.getElementById("resposta").innerHTML = resposta;
 
@@ -188,46 +178,43 @@
         }
 
         /* =====================================================
-                       GEMINI: VOZ FEMININA
+                    GEMINI – VOZ FEMININA
         ===================================================== */
         async function falar(texto) {
-            const audioData = await mediaModel.generateContent({
+            const audio = await mediaModel.generateContent({
                 contents: [{
                     role: "user",
-                    parts: [{ text: "Leia com voz feminina suave e natural: " + texto }]
+                    parts: [{ text: "Leia com voz feminina suave: " + texto }]
                 }],
-                generationConfig: {
-                    response_mime_type: "audio/mp3"
-                }
+                generationConfig: { response_mime_type: "audio/mp3" }
             });
 
-            const base64 = audioData.response.candidates[0].content.parts[0].inlineData.data;
+            const base64 = audio.response.candidates[0].content.parts[0].inlineData.data;
 
             new Audio("data:audio/mp3;base64," + base64).play();
         }
 
         /* =====================================================
-                       GEMINI: IMAGEM
+                    GEMINI – IMAGEM
         ===================================================== */
         async function gerarImagem(prompt) {
-            const imgData = await mediaModel.generateContent({
+            const imgRes = await mediaModel.generateContent({
                 contents: [{
                     role: "user",
                     parts: [{ text: "Crie uma imagem artística baseada em: " + prompt }]
                 }],
-                generationConfig: {
-                    response_mime_type: "image/png"
-                }
+                generationConfig: { response_mime_type: "image/png" }
             });
 
-            const base64 = imgData.response.candidates[0].content.parts[0].inlineData.data;
+            const base64 = imgRes.response.candidates[0].content.parts[0].inlineData.data;
 
             const img = document.createElement("img");
             img.src = "data:image/png;base64," + base64;
+
             document.getElementById("imagens").appendChild(img);
         }
-    </script>
 
+    </script>
 
 </body>
 
