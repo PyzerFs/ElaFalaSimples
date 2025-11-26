@@ -61,9 +61,17 @@
         }
 
         @keyframes pulse {
-            0% { filter: drop-shadow(0 0 10px #ffaa00); }
-            50% { filter: drop-shadow(0 0 25px #ffaa00); }
-            100% { filter: drop-shadow(0 0 10px #ffaa00); }
+            0% {
+                filter: drop-shadow(0 0 10px #ffaa00);
+            }
+
+            50% {
+                filter: drop-shadow(0 0 25px #ffaa00);
+            }
+
+            100% {
+                filter: drop-shadow(0 0 10px #ffaa00);
+            }
         }
 
         #resposta {
@@ -96,9 +104,9 @@
 
     <script>
         /* =====================================================
-                     CONFIGURAÇÃO GEMINI
+                         CONFIGURAÇÃO GEMINI
         ===================================================== */
-        const API_KEY = "AIzaSyALRzrry7cWVfWmDQwlWytK7QA1lqLzF4A"; // Troque aqui!
+        const API_KEY = "AIzaSyALRzrry7cWVfWmDQwlWytK7QA1lqLzF4A";
 
         const genAI = new GoogleGenerativeAI(API_KEY);
 
@@ -106,57 +114,71 @@
         const mediaModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
         /* =====================================================
-                     INICIAR MICROFONE AUTOMÁTICO
+                         MICROFONE — SISTEMA FINAL
         ===================================================== */
-        let recognition;
+        let recognition = null;
+        let micAtivo = false;
 
-        async function iniciarMic() {
+        async function solicitarPermissaoMic() {
             try {
                 await navigator.mediaDevices.getUserMedia({ audio: true });
-
-                recognition = new webkitSpeechRecognition();
-                recognition.lang = "pt-BR";
-                recognition.continuous = false;
-
-                recognition.onstart = () => {
-                    document.getElementById("resposta").innerHTML =
-                        "Estou te ouvindo...";
-                };
-
-                recognition.onresult = async event => {
-                    const texto = event.results[0][0].transcript;
-                    document.getElementById("resposta").innerHTML =
-                        "Você disse: " + texto;
-
-                    responderGemini(texto);
-                };
-
-                recognition.onerror = err => {
-                    console.log("Erro no microfone:", err);
-                };
-
-                recognition.onend = () => {
-                    recognition.start(); // reinicia automaticamente
-                };
-
-                recognition.start();
-
-            } catch {
-                document.getElementById("resposta").innerHTML =
-                    "Por favor, permita o microfone no navegador.";
+                return true;
+            } catch (e) {
+                alert("Você precisa permitir o microfone para eu funcionar.");
+                return false;
             }
         }
 
-        iniciarMic();
+        async function iniciarReconhecimento() {
+            if (micAtivo) return;
+
+            micAtivo = true;
+
+            recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.lang = "pt-BR";
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            recognition.onstart = () => {
+                document.getElementById("resposta").innerHTML = "Estou ouvindo…";
+            };
+
+            recognition.onresult = (event) => {
+                const texto = event.results[0][0].transcript;
+                document.getElementById("resposta").innerHTML = "Você disse: " + texto;
+                responderGemini(texto);
+            };
+
+            recognition.onerror = (e) => {
+                console.warn("Erro no reconhecimento:", e);
+            };
+
+            recognition.onend = () => {
+                setTimeout(() => {
+                    if (micAtivo) recognition.start();
+                }, 300);
+            };
+
+            recognition.start();
+        }
 
         /* =====================================================
-                     GEMINI → GERAR RESPOSTA
+               ATIVAR MICROFONE COM QUALQUER CLIQUE NA TELA
+        ===================================================== */
+        window.addEventListener("click", async () => {
+            if (!micAtivo) {
+                const ok = await solicitarPermissaoMic();
+                if (ok) iniciarReconhecimento();
+            }
+        });
+
+        /* =====================================================
+                         GEMINI: RESPONDER (TEXTO)
         ===================================================== */
         async function responderGemini(texto) {
             document.getElementById("resposta").innerHTML = "Processando...";
 
             const result = await textModel.generateContent(texto);
-
             const resposta = result.response.text();
 
             document.getElementById("resposta").innerHTML = resposta;
@@ -166,41 +188,47 @@
         }
 
         /* =====================================================
-                     GEMINI → FALAR EM VOZ FEMININA
+                       GEMINI: VOZ FEMININA
         ===================================================== */
         async function falar(texto) {
-            const audioResult = await mediaModel.generateContent({
+            const audioData = await mediaModel.generateContent({
                 contents: [{
                     role: "user",
-                    parts: [{ text: "Leia com voz feminina suave: " + texto }]
+                    parts: [{ text: "Leia com voz feminina suave e natural: " + texto }]
                 }],
-                generationConfig: { response_mime_type: "audio/mp3" }
+                generationConfig: {
+                    response_mime_type: "audio/mp3"
+                }
             });
 
-            const base64 = audioResult.response.candidates[0].content.parts[0].inlineData.data;
+            const base64 = audioData.response.candidates[0].content.parts[0].inlineData.data;
+
             new Audio("data:audio/mp3;base64," + base64).play();
         }
 
         /* =====================================================
-                     GEMINI → GERAR IMAGEM
+                       GEMINI: IMAGEM
         ===================================================== */
         async function gerarImagem(prompt) {
-            const imgResult = await mediaModel.generateContent({
+            const imgData = await mediaModel.generateContent({
                 contents: [{
                     role: "user",
-                    parts: [{ text: "Crie uma imagem artística sobre: " + prompt }]
+                    parts: [{ text: "Crie uma imagem artística baseada em: " + prompt }]
                 }],
-                generationConfig: { response_mime_type: "image/png" }
+                generationConfig: {
+                    response_mime_type: "image/png"
+                }
             });
 
-            const base64 = imgResult.response.candidates[0].content.parts[0].inlineData.data;
+            const base64 = imgData.response.candidates[0].content.parts[0].inlineData.data;
 
             const img = document.createElement("img");
             img.src = "data:image/png;base64," + base64;
-
             document.getElementById("imagens").appendChild(img);
         }
     </script>
 
+
 </body>
+
 </html>
